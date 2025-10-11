@@ -15,16 +15,14 @@ from qgis.core import (
     Qgis
 )
 
-##CONFIGURACION
-# Cambia "ID_ROAD" por el nombre de tu campo que identifique las vías,
+##CONFIGURACION # Cambia "ID_ROAD" por el nombre de tu campo que identifique las vías,
 # o cambia el campo que identifica las vías de tu capa de carreteras a ID_ROAD
+
 EXPECTED_FIELD = "ID_ROAD"
 
 def formato_pk(pk_total):
-    """Devuelve PK en formato K+MMM. Km con 2 dígitos mínimos, metros 3 dígitos."""
     km = int(pk_total)
     m = int(round((pk_total - km) * 1000))
-    # Ajuste por caso 999.5 m -> carry al km
     if m == 1000:
         km += 1
         m = 0
@@ -37,6 +35,8 @@ class DistanciaPK:
         self.canvas = iface.mapCanvas()
         self.action = None
         self.tool = None
+        # << NUEVO >>
+        self.current_msg = None
 
     def initGui(self):
         import os
@@ -47,10 +47,8 @@ class DistanciaPK:
         self.action.setCheckable(True)
         self.action.toggled.connect(self.toggle_tool)
         self.iface.addToolBarIcon(self.action)
-        # Ya no nos auto-desmarcamos al cambiar de herramienta
 
     def unload(self):
-        # Limpieza segura al desinstalar
         if self.tool:
             try:
                 self.tool.reset()
@@ -58,6 +56,8 @@ class DistanciaPK:
                 pass
         if self.tool and self.canvas.mapTool() == self.tool:
             self.canvas.unsetMapTool(self.tool)
+        # << NUEVO: cerrar nuestra barra si existe >>
+        self._close_messagebar()
         if self.action:
             self.iface.removeToolBarIcon(self.action)
             self.action = None
@@ -68,11 +68,12 @@ class DistanciaPK:
             if not ok and self.action:
                 self.action.setChecked(False)
         else:
-            # Al apagar: soltar herramienta y borrar marcadores
             if self.tool and self.canvas.mapTool() == self.tool:
                 self.canvas.unsetMapTool(self.tool)
             if self.tool:
                 self.tool.reset()
+            # << NUEVO: al apagar, cerrar barra de info >>
+            self._close_messagebar()
 
     def activate_tool(self):
         try:
@@ -105,10 +106,9 @@ class DistanciaPK:
             if not self.tool:
                 self.tool = DistanciaTool(self.iface, self.canvas, self.show_distance_message)
 
-            # Asignar capa e índice sin cambiar la capa activa (no interrumpe edición)
             self.tool.layer = layer
             self.tool.index = QgsSpatialIndex(layer.getFeatures())
-            self.tool.reset()  # Nueva sesión al activar
+            self.tool.reset()
 
             self.canvas.setMapTool(self.tool)
             return True
@@ -118,11 +118,11 @@ class DistanciaPK:
             return False
 
     def show_distance_message(self, nombre_via, pk1, pk2, dist_pk_km, dist_lineal_km):
-        # Mostrar PKs SOLO en formato 00+000 para limpiar la barra
+        # << NUEVO: cerrar mensaje anterior antes de crear uno nuevo >>
+        self._close_messagebar()
+
         pk1_str = formato_pk(pk1)
         pk2_str = formato_pk(pk2)
-
-        # Mensaje compacto
         texto = (
             f"{nombre_via} | PK1: {pk1_str} · PK2: {pk2_str} | "
             f" Dist. PK: {dist_pk_km:.3f} km · Dist. Lineal: {dist_lineal_km:.3f} km"
@@ -130,7 +130,6 @@ class DistanciaPK:
 
         msg = self.iface.messageBar().createMessage("Distancia PK", texto)
 
-        # Botones de copiado
         btn_pk = QPushButton("Copiar distancia PK")
         btn_pk.clicked.connect(lambda: QApplication.clipboard().setText(f"{dist_pk_km:.3f} km"))
 
@@ -140,14 +139,27 @@ class DistanciaPK:
         msg.layout().addWidget(btn_pk)
         msg.layout().addWidget(btn_lin)
 
-        self.iface.messageBar().pushWidget(msg, Qgis.Info)
+        # << NUEVO: guardar el handler del mensaje para poder cerrarlo luego >>
+        self.current_msg = self.iface.messageBar().pushWidget(msg, Qgis.Info)
+
+    # << NUEVO: helper para cerrar solo nuestro mensaje >>
+    def _close_messagebar(self):
+        if self.current_msg:
+            try:
+                self.iface.messageBar().popWidget(self.current_msg)
+            except Exception:
+                try:
+                    self.current_msg.close()
+                except Exception:
+                    # Último recurso: no tocar otros mensajes de la barra
+                    pass
+            finally:
+                self.current_msg = None
 
     def run(self):
-        """Activa la herramienta de distancia."""
         return self.activate_tool()
 
     def deactivate(self):
-        """Desactiva la herramienta y limpia."""
         if self.tool:
             try:
                 self.tool.reset()
@@ -155,6 +167,8 @@ class DistanciaPK:
                 pass
             if self.canvas.mapTool() == self.tool:
                 self.canvas.unsetMapTool(self.tool)
+        # << NUEVO: cierra la barra al desactivar desde aquí también >>
+        self._close_messagebar()
 
 
 class DistanciaTool(QgsMapTool):
@@ -183,12 +197,11 @@ class DistanciaTool(QgsMapTool):
     def canvasReleaseEvent(self, event):
         pt_map = self.toMapCoordinates(event.pos())
         if self.click_count >= 2:
-            self.reset()  # Mantener: nueva medición borra puntos
+            self.reset()  # Nueva medición borra puntos (la barra se reemplaza al final con show_distance_message)
         self._process_click(pt_map)
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
-            # Ya no borramos al perder el foco; solo soltamos la herramienta
             self.canvas.unsetMapTool(self)
 
     def _process_click(self, click_pt_map):
@@ -200,14 +213,12 @@ class DistanciaTool(QgsMapTool):
             map_crs = self.canvas.mapSettings().destinationCrs()
             layer_crs = self.layer.crs()
 
-            # clic en CRS de capa
             layer_pt = click_pt_map
             if map_crs != layer_crs:
                 xf_to_layer = QgsCoordinateTransform(map_crs, layer_crs, QgsProject.instance())
                 layer_pt = xf_to_layer.transform(click_pt_map)
 
             if self.click_count == 0:
-                # primer punto → localizar línea + proyección
                 fids = self.index.nearestNeighbor(layer_pt, 5)
                 closest_feat, proj_pt_layer = None, None
                 min_d = float('inf')
@@ -227,24 +238,21 @@ class DistanciaTool(QgsMapTool):
                 self.first_feat = closest_feat
                 pk1, dist1 = self._compute_pk_and_dist(closest_feat.geometry(), proj_pt_layer)
 
-                # marcador en la PROYECCIÓN, transformado al CRS del mapa
                 proj1_map = proj_pt_layer.asPoint()
                 if map_crs != layer_crs:
                     xf_to_map = QgsCoordinateTransform(layer_crs, map_crs, QgsProject.instance())
                     proj1_map = xf_to_map.transform(proj1_map)
                 self._add_marker(proj1_map)
 
-                self.pk_values.append(pk1)            # km
-                self.line_distances.append(dist1)     # unidades de la capa (m si CRS métrico)
+                self.pk_values.append(pk1)
+                self.line_distances.append(dist1)
                 self.click_count = 1
 
             else:
-                # segundo punto → misma línea (self.first_feat)
                 geom = self.first_feat.geometry()
                 near_layer = geom.nearestPoint(QgsGeometry.fromPointXY(QgsPointXY(layer_pt)))
                 pk2, dist2 = self._compute_pk_and_dist(geom, near_layer)
 
-                # marcador en la PROYECCIÓN del segundo punto
                 proj2_map = near_layer.asPoint()
                 if map_crs != layer_crs:
                     xf_to_map = QgsCoordinateTransform(layer_crs, map_crs, QgsProject.instance())
@@ -255,10 +263,9 @@ class DistanciaTool(QgsMapTool):
                 self.line_distances.append(dist2)
                 self.click_count = 2
 
-                # resultados
-                dist_pk = abs(self.pk_values[1] - self.pk_values[0])                 # km
-                dist_lineal = abs(self.line_distances[1] - self.line_distances[0])   # unidades de capa
-                dist_lineal_km = dist_lineal / 1000.0                                # a km (si capa métrica)
+                dist_pk = abs(self.pk_values[1] - self.pk_values[0])               # km
+                dist_lineal = abs(self.line_distances[1] - self.line_distances[0]) # unidades de capa
+                dist_lineal_km = dist_lineal / 1000.0                              # a km (si métrico)
 
                 nombre_via = self.first_feat[EXPECTED_FIELD] or "Vía desconocida"
 
@@ -272,10 +279,7 @@ class DistanciaTool(QgsMapTool):
             self.iface.messageBar().pushWarning("Distancia PK", f"Error al calcular: {e}")
 
     def _compute_pk_and_dist(self, geom_line, proj_pt_layer):
-        # distancia acumulada a lo largo de la línea hasta la proyección (en unidades de capa)
         dist_click = geom_line.lineLocatePoint(proj_pt_layer)
-
-        # vértices y longitudes acumuladas
         verts = list(geom_line.vertices())
         if len(verts) < 2:
             return 0.0, 0.0
@@ -285,23 +289,18 @@ class DistanciaTool(QgsMapTool):
             seg = QgsGeometry.fromPolylineXY([QgsPointXY(verts[i-1]), QgsPointXY(verts[i])])
             cum.append(cum[-1] + seg.length())
 
-        # interpolar M → PK (en km)
         idx = next((i for i in range(len(cum)-1)
                     if cum[i] <= dist_click <= cum[i+1]), len(cum)-2)
-        
-        # CONFIGURACION
-        # AJUSTAR METROS O KILÓMETROS
-        m1 = verts[idx].m() / 1000.0 # Dividir por 1 si la capa está calibrada en KM y por 1000 si es metros
-        m2 = verts[idx+1].m() / 1000.0 # Dividir por 1 si la capa está calibrada en KM y por 1000 si es metros
+        # Ajusta aquí si tus M están en km en lugar de m
+        m1 = verts[idx].m() / 1000.0
+        m2 = verts[idx+1].m() / 1000.0
         start = cum[idx]
         seg_len = cum[idx+1] - start
         t = (dist_click - start) / seg_len if seg_len > 0 else 0.0
         pk_km = m1 + t * (m2 - m1)
-
-        return pk_km, dist_click  # pk en km, distancia lineal en unidades de la capa
+        return pk_km, dist_click
 
     def _add_marker(self, map_pt):
-        # Aro + punto verde en la PROYECCIÓN (CRS del mapa)
         ring = QgsVertexMarker(self.canvas)
         ring.setCenter(QgsPointXY(map_pt))
         ring.setColor(QColor(0, 200, 0))
@@ -321,5 +320,4 @@ class DistanciaTool(QgsMapTool):
         self.markers.extend([ring, dot])
 
     def deactivate(self):
-        # No limpiar aquí; los puntos se borran al apagar el botón o al iniciar nueva medición
         super().deactivate()
