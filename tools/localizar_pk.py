@@ -13,7 +13,7 @@ from qgis.core import (
     Qgis
 )
 
-##CONFIGURACION
+## CONFIGURACION
 # Cambia "ID_ROAD" por el nombre de tu campo que identifique las vías,
 # o cambia el campo que identifica las vías de tu capa de carreteras a ID_ROAD
 EXPECTED_FIELD = "ID_ROAD"
@@ -31,27 +31,18 @@ class LocalizarPK:
         self.history_menu = None
         self.history = []   # [(via, pk_km, map_pt)]
         self.markers = []   # [QgsVertexMarker, QgsVertexMarker]
+        self.layer = None
 
     def create_action(self):
         import os
-        from qgis.PyQt.QtGui import QIcon
-        from qgis.PyQt.QtWidgets import QAction, QMenu
-
         icon = QIcon(":/plugins/pk_tools/icons/localizar.png")
         self.action = QAction(icon, "Localizar PK", self.iface.mainWindow())
         self.action.setToolTip("Localizar punto según PK en vía calibrada")
-
-        # Menú desplegable (historial, exportar, etc.)
         self.history_menu = QMenu(self.iface.mainWindow())
         self.history_menu.setTitle("Historial")
         self.action.setMenu(self.history_menu)
-
-        # Acción principal → abrir el diálogo
         self.action.triggered.connect(self.run)
-
-        # Inicializar menú
         self._update_history_menu()
-
         return self.action
 
     def initGui(self):
@@ -65,8 +56,6 @@ class LocalizarPK:
         self.action.setMenu(self.history_menu)
         self.action.triggered.connect(self.open_dialog)
         self.iface.addToolBarIcon(self.action)
-
-        # Inicializar el menú en el orden solicitado
         self._update_history_menu()
 
     def unload(self):
@@ -149,52 +138,88 @@ class LocalizarPK:
         except ValueError:
             self.iface.messageBar().pushWarning("Localizar PK", "Valores de km o m inválidos.")
             return
-        
+
         pk_total_km = km + m / 1000.0
         self.locate(via, pk_total_km)
 
     def locate(self, via, pk_km):
-        # 1) Buscar la feature
         field = EXPECTED_FIELD
-        feat = next((f for f in self.layer.getFeatures() if f[field] == via), None)
-        if not feat:
+
+        # 0) Preparar objetivo en metros (ajusta si tus M están en km)
+        target_m = pk_km * 1000.0
+        EPS = 1e-6
+
+        # 1) Reunir TODAS las features de la vía
+        if not self.layer:
+            self.iface.messageBar().pushWarning("Localizar PK", "No hay capa seleccionada.")
+            return
+        feats = [f for f in self.layer.getFeatures() if f[field] == via]
+        if not feats:
             self.iface.messageBar().pushInfo("Localizar PK", f"No se encontró vía '{via}'.")
             return
 
-        # 2) Interpolar por M
-        geom = feat.geometry()
-        verts = list(geom.vertices())
-        m_vals = [pt.m() for pt in verts]
-        
-        # CONFIGURACION
-        # AJUSTAR METROS O KILÓMETROS
-        target_m = pk_km * 1000.0 # Multiplicar por 1000 si la capa está calibrada en m y por 1 si es KM
-        
-        if target_m < m_vals[0] or target_m > m_vals[-1]:
-            self.iface.messageBar().pushInfo("Localizar PK", f"PK {formato_pk(pk_km)} fuera de rango de la vía.")
+        # 2) Auxiliar: interpolar por M (multipartes + M invertida)
+        def _interpolate_point_by_m(geom, target_m):
+            verts = list(geom.vertices())
+            if len(verts) < 2:
+                return None
+            for i in range(len(verts) - 1):
+                p0, p1 = verts[i], verts[i + 1]
+                m0, m1 = p0.m(), p1.m()
+                if m0 is None or m1 is None:
+                    continue
+                # ¿target entre m0 y m1 sin asumir orden?
+                if (m0 - EPS <= target_m <= m1 + EPS) or (m1 - EPS <= target_m <= m0 + EPS):
+                    if abs(m1 - m0) < EPS:
+                        return QgsPointXY(p0.x(), p0.y())
+                    t = (target_m - m0) / (m1 - m0)
+                    x = p0.x() + t * (p1.x() - p0.x())
+                    y = p0.y() + t * (p1.y() - p0.y())
+                    return QgsPointXY(x, y)
+            return None
+
+        # 3) Buscar el tramo que contiene el target
+        global_min = None
+        global_max = None
+        map_pt = None
+
+        for f in feats:
+            geom = f.geometry()
+            m_vals = [pt.m() for pt in geom.vertices() if pt.m() is not None]
+            if not m_vals:
+                continue
+            fmin, fmax = min(m_vals), max(m_vals)
+            global_min = fmin if global_min is None else min(global_min, fmin)
+            global_max = fmax if global_max is None else max(global_max, fmax)
+
+            if fmin - EPS <= target_m <= fmax + EPS:
+                pt = _interpolate_point_by_m(geom, target_m)
+                if pt is not None:
+                    map_pt = pt
+                    break  # encontrado
+
+        if map_pt is None:
+            if global_min is not None and global_max is not None:
+                self.iface.messageBar().pushInfo(
+                    "Localizar PK",
+                    f"PK {formato_pk(pk_km)} fuera de rango de la vía "
+                    f"(rango total ~ {int(global_min)}–{int(global_max)} m)."
+                )
+            else:
+                self.iface.messageBar().pushInfo("Localizar PK", f"No hay medidas M válidas en la vía '{via}'.")
             return
 
-        idx = next(i for i in range(len(m_vals) - 1) if m_vals[i] <= target_m <= m_vals[i + 1])
-        m1, m2 = m_vals[idx], m_vals[idx + 1]
-        p0, p1 = verts[idx], verts[idx + 1]
-        t = (target_m - m1) / (m2 - m1) if m2 != m1 else 0
-        x = p0.x() + t * (p1.x() - p0.x())
-        y = p0.y() + t * (p1.y() - p0.y())
-        point_layer = QgsPointXY(x, y)
-
-        # 3) Transformar al CRS del mapa
+        # 4) Transformar al CRS del mapa
         map_crs = self.canvas.mapSettings().destinationCrs()
         layer_crs = self.layer.crs()
-        map_pt = point_layer
         if layer_crs != map_crs:
             xf = QgsCoordinateTransform(layer_crs, map_crs, QgsProject.instance())
-            map_pt = xf.transform(point_layer)
+            map_pt = xf.transform(map_pt)
 
-        # 4) Dibujar marcador (limpiando anteriores)
+        # 5) Dibujar marcador y UI
         self._limpiar_marcadores()
         self._add_marker(map_pt, QColor(0, 0, 255))
 
-        # 5) Preparar URL Street View y texto
         crs_wgs84 = QgsCoordinateTransform(map_crs, QgsCoordinateReferenceSystem("EPSG:4326"), QgsProject.instance())
         pt_wgs = crs_wgs84.transform(map_pt)
         lat, lon = pt_wgs.y(), pt_wgs.x()
@@ -206,7 +231,6 @@ class LocalizarPK:
         )
         msg = self.iface.messageBar().createMessage("Localizar PK", message_text)
 
-        # Botones en la barra de mensajes
         btn_zoom = QPushButton("Zoom")
         btn_zoom.clicked.connect(lambda: self._zoom_al_punto(map_pt))
         msg.layout().addWidget(btn_zoom)
@@ -400,6 +424,7 @@ class LocalizarPK:
 
         vl.updateExtents()
         QgsProject.instance().addMapLayer(vl)
+
     def run(self):
         """Método de entrada para integrarlo en el plugin unificado."""
         self.open_dialog()
