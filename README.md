@@ -180,5 +180,5 @@ Puedes usarlo, modificarlo y compartirlo libremente bajo los términos de esta l
 
 ## 👤 Autor
 
-- **Nombre**: Javi H. Piris  
+- **LinkedIn**: [Javi H. Piris](https://www.linkedin.com/in/javierhpiris) 
 - **GitHub**: [@Javisionario](https://github.com/Javisionario)
