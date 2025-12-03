@@ -8,7 +8,8 @@
 
 ## 🔧 ¿Qué hace PK Tools?
 
-PK Tools está pensado para capas de carreteras **lineales con geometría M** (calibración). Trabaja siempre sobre **una capa de trabajo configurable**, y a partir de ella ofrece tres herramientas:
+PK Tools está pensado para capas de carreteras **lineales con geometría M** (calibración).  
+Trabaja siempre sobre **una capa de trabajo configurable**, y a partir de ella ofrece tres herramientas:
 
 ---
 
@@ -32,18 +33,16 @@ Permite identificar la vía y el punto kilométrico haciendo clic sobre una capa
 
 Abre una ventana donde el usuario puede introducir:
 
-- La carretera (mediante un campo identificador configurable).
-- Un PK (km + m).
+- La carretera (mediante el campo identificador configurado).
+- Un PK (kilómetros + metros).
 
-Y el complemento:
+El complemento:
 
 - Ubica el punto exacto en el mapa sobre la capa calibrada.
 - Dibuja un marcador en el mapa.
 - Muestra un enlace a Street View y un botón para centrar el mapa.
 - Mantiene un **historial** accesible desde el menú desplegable del botón.
 - Permite exportar puntos seleccionados del historial a una capa temporal.
-
-El marcador permanece hasta que se localiza otro punto o se borra manualmente desde el menú.
 
 ![](PICTURES/Localizar.png)
 
@@ -70,24 +69,34 @@ Estas herramientas son ideales para proyectos de carreteras o análisis de movil
 
 ## 📥 Instalación
 
-1. Descarga el repositorio de GitHub: `Code → Download ZIP`.
-2. Abre QGIS y ve a  
+### 1. Desde el repositorio oficial de QGIS (recomendado)
+
+1. Abre QGIS.
+2. Ve a `Complementos → Administrar e instalar complementos`.
+3. En la pestaña **Todos**, busca **“PK Tools”**.
+4. Selecciónalo y pulsa **Instalar complemento**.
+5. Actívalo (si no lo está) desde la pestaña **Instalados**.
+
+Al activarlo, aparecerá una **barra de herramientas propia** llamada `PK Tools`, con tres botones (Identificar, Localizar, Distancia) y un pequeño botón de **opciones** al final.
+
+### 2. Desde GitHub (ZIP)
+
+1. En GitHub, descarga el repositorio: `Code → Download ZIP`.
+2. En QGIS, ve a  
    `Complementos → Administrar e instalar complementos → Instalar desde ZIP`.
-3. Selecciona el ZIP descargado y haz clic en **Instalar**.
+3. Selecciona el ZIP descargado y pulsa **Instalar complemento**.
+4. Actívalo en la pestaña **Instalados** si no se activa automáticamente.
 
-**O bien (instalación manual):**
+### 3. Instalación manual (carpeta)
 
-1. Descomprime y copia la carpeta `pk_tools` en la carpeta de complementos de tu perfil de QGIS. Por ejemplo:  
+1. Descomprime y copia la carpeta `pk_tools` en la carpeta de complementos de tu perfil de QGIS, por ejemplo:  
    - **Windows**:  
      `C:\Users\USUARIO\AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins\pk_tools`  
    - **Linux/Mac**:  
      `~/.local/share/QGIS/QGIS3/profiles/default/python/plugins/pk_tools`
 2. Reinicia QGIS.
 3. Activa el complemento en  
-   `Complementos → Administrar e instalar complementos → Instalados`  
-   marcando **PK Tools** si no lo está.
-
-Una vez instalado y activado, verás una **barra de herramientas propia** llamada `PK Tools`, con tres botones principales (Identificar, Localizar, Distancia) y un pequeño botón de opciones (desplegable).
+   `Complementos → Administrar e instalar complementos → Instalados`.
 
 ---
 
@@ -97,106 +106,68 @@ Una vez instalado y activado, verás una **barra de herramientas propia** llamad
 - Una capa de carreteras:
   - De tipo **línea**.
   - Con **geometría M** (calibración) válida.
-- Un campo en la tabla de atributos que identifique la vía (por ejemplo, `ID_ROAD`, `CARRETERA`, etc.).
+- Un campo en la tabla de atributos que identifique la vía (p. ej. `ID_ROAD`, `CARRETERA`, etc.).
 - Los valores M pueden estar:
   - En **metros** (comportamiento por defecto).
   - O directamente en **kilómetros** (configurable).
 
-> ⚠️ Actualmente, las tres herramientas (**Identificar PK**, **Localizar PK** y **Distancia PK**) requieren que la capa tenga geometría M.  
-> Si la capa no tiene M, el plugin mostrará un mensaje indicando que la capa no es válida.
+> ⚠️ Si la capa no tiene geometría M o no es lineal, las herramientas mostrarán un mensaje indicando que la capa configurada no es válida.
 
 ---
 
-## ⚙️ Configuración inicial
+## ⚙️ Configuración
 
-La primera vez que actives PK Tools, se abrirá automáticamente una ventana de **configuración**. También puedes abrirla en cualquier momento desde el pequeño botón de **opciones** (flecha / tres puntos) al final de la barra de herramientas `PK Tools`.
+La primera vez que actives PK Tools, se abrirá automáticamente la ventana de **Configuración**.  
+También puedes abrirla en cualquier momento desde el botón de **opciones** (flecha) al final de la barra `PK Tools`.
 
-### 1. Capa de trabajo
+![](PICTURES/CONFIG.png)
 
-En el diálogo de configuración podrás elegir:
+En esta ventana configura tres ajustes:
 
-- La **capa de vías** sobre la que van a trabajar las tres herramientas.
+1. **Capa de vías**  
+   - Elige la capa lineal con geometría M sobre la que quieres trabajar.  
+   - Solo se muestran capas que sean líneas y tengan M.
 
-Requisitos que se comprueban:
+2. **Campo identificador de la vía**  
+   - Selecciona el campo de la tabla de atributos que identifica la carretera (por ejemplo, `ID_ROAD`).  
+   - Se usará para: mostrar el nombre de la vía, autocompletar en Localizar PK y etiquetar resultados.
 
-- Debe ser una **capa vectorial lineal**.
-- Su geometría debe tener **M** (`LineStringM`, `MultiLineStringM`, etc.).
+3. **Unidades del campo M**  
+   - Elige si los valores M de la capa están en **metros** (por defecto) o en **kilómetros**.  
+   - PK Tools convierte internamente para mostrar siempre PK en kilómetros (y en formato `km+MMM`).
 
-> Si la capa no aparece en la lista, asegúrate de que esté cargada en el proyecto y que su tipo de geometría incluya M.
+La vista previa de valores M en la parte inferior te ayuda a comprobar si los M parecen ser metros (valores grandes, p. ej. 12345.0) o kilómetros (valores tipo 12.345).
 
-### 2. Campo identificador de la vía
-
-En el mismo diálogo:
-
-- Elige el **campo que identifica la carretera / vía** (por ejemplo, `ID_ROAD`).
-
-Notas:
-
-- Si existe un campo `ID_ROAD`, el plugin lo propone automáticamente.
-- Puedes seleccionar cualquier otro campo (cadena, código, etc.) que identifique de forma consistente la vía.
-
-Este campo se utilizará en:
-
-- **Identificar PK**: para mostrar el nombre de la vía.
-- **Localizar PK**: para autocompletar la carretera al escribir.
-- **Distancia PK**: para mostrar en el resultado sobre qué vía se está midiendo.
-
-### 3. Unidades del campo M
-
-También debes indicar en qué unidad están los valores M de la capa:
-
-- **Metros** (opción por defecto).
-- **Kilómetros**.
-
-El plugin ajusta internamente las conversiones:
-
-- Si eliges **Metros**:
-  - M se interpreta como metros.
-  - Los PK se muestran siempre en kilómetros (y en formato `km+000`).
-- Si eliges **Kilómetros**:
-  - M se interpreta directamente como kilómetros.
-  - No se aplica el factor 1/1000.
-
-### 4. Vista previa de valores M
-
-La configuración muestra una **vista previa** de algunos valores M encontrados en la capa seleccionada:
-
-- Verás líneas del tipo:  
-  `Feature 123: M ~ 0.000, 13.250, 25.600, ...`
-- Esta vista previa te puede ayudar a deducir si M está en **metros** (valores grandes, p.ej. 12500.0) o en **kilómetros** (valores tipo 12.500).
-
-Cuando pulses **Aceptar**, la configuración se guarda mediante `QgsSettings` y se mantiene entre sesiones de QGIS (no hace falta volver a configurarlo cada vez que abras el proyecto).
+La configuración se guarda y se mantiene entre sesiones: **no hace falta configurarla cada vez que abras QGIS**.
 
 ---
 
-## ✅ Uso básico
+## ✅ Uso rápido
 
-1. **Configura el plugin** una vez (capa, campo de vía y unidades M).
-2. En la barra `PK Tools`:
-   - Usa **Identificar PK** para obtener información al hacer clic sobre la vía.
-   - Usa **Localizar PK** para ir a un PK concreto (con su historial y exportación).
-   - Usa **Distancia PK** para medir la diferencia de PK y la distancia real entre dos puntos sobre la misma vía.
-3. Reajusta la configuración desde el botón de opciones si cambias de capa o de convenciones (por ejemplo, otra capa calibrada en km).
+1. Configura la **capa de trabajo**, el **campo de vía** y las **unidades M** en la ventana de Configuración.
+2. Usa:
+   - **Identificar PK** para clicar en la carretera y ver vía + PK + enlace a Street View.
+   - **Localizar PK** para ir a un PK concreto, con historial y exportación.
+   - **Distancia PK** para medir la diferencia entre dos PKs y la distancia real.
+3. Si cambias de capa o de datos, abre de nuevo la **Configuración** y ajusta los parámetros.
 
 ---
 
 ## ⚠️ Limitaciones y advertencias
 
 - **Tipo de capa**:
-  - Solo se admiten capas lineales con geometría M.
-  - Si la capa no es lineal o no tiene M, las herramientas no se activarán y el plugin mostrará un mensaje.
+  - Solo se admiten capas **lineales con M**.
+  - Si tu capa no tiene M, el complemento no puede calcular PKs.
 - **Consistencia de M**:
-  - El plugin asume que los valores M son **monótonos** a lo largo de la línea (aunque maneja casos donde suben o bajan ligeramente).
-  - Si la calibración es errática, los resultados pueden no ser fiables.
+  - Se asume que la calibración M es razonablemente coherente a lo largo de la vía.  
+    Si los M son muy erráticos, los resultados pueden no ser fiables.
 - **Rendimiento**:
-  - En capas muy grandes (muchos trazados y vértices), la búsqueda de vecinos y la interpolación pueden tardar algo más.
+  - En capas muy grandes (muchos vértices y tramos), la búsqueda y la interpolación pueden tardar algo más.
 - **Edición de capas**:
-  - No se recomienda usar las herramientas mientras la capa de líneas está en edición para evitar resultados inconsistentes.
+  - No se recomienda usar las herramientas mientras la capa está en edición.
 - **Street View**:
-  - Requiere conexión a Internet.
-  - El complemento genera enlaces a Google Street View; respeta siempre sus términos de uso.
-
-💡 Consejo: revisa la **configuración** si cambias de proyecto o de capa, y comprueba que la unidad de M (metros o kilómetros) coincide con cómo está calibrada tu capa.
+  - Requiere conexión a Internet.  
+  - Respeta siempre los términos de uso de Google.
 
 ---
 
