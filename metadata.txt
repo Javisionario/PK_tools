@@ -11,5 +11,8 @@ about=PK Tools unifica tres utilidades en un único complemento:
   • Distancia PK: mide la distancia entre dos PKs sobre la misma vía, mostrando tanto la distancia por PK como la distancia lineal (en ocasiones la calibración de la capa no coincide con la diferencia entre PKs.
   
   Ideal para proyectos de carreteras o análisis de movilidad.
-category=Analysis
+category=Vector
+homepage=https://github.com/Javisionario
+tracker=https://github.com/Javisionario/PK_tools/issues
+repository=https://github.com/Javisionario/PK_tools
 icon=icons/identificar.png
